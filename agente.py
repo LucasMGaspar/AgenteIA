@@ -76,7 +76,7 @@ def google_search(query):
     return results
 
 # ------------------------ CARREGAR CSV E CONFIGURAR EMBEDDINGS ------------------------
-loader = CSVLoader(file_path="teste.csv", encoding="utf-8")
+loader = CSVLoader(file_path="dadosDeTreinamento.csv", encoding="utf-8")
 documents = list(loader.lazy_load())
 
 embeddings = OpenAIEmbeddings()
