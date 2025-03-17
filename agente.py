@@ -81,15 +81,15 @@ def load_documents():
     return documents
 
 @st.cache_resource
-def get_vectorstore(documents):
+def get_vectorstore():
     """Cria e retorna o índice vetorial utilizando embeddings."""
+    documents = load_documents()  # Obtém os documentos internamente
     embeddings = OpenAIEmbeddings()
     vectorstore = FAISS.from_documents(documents, embeddings)
     return vectorstore
 
-# Carregar documentos e construir o índice vetorial (aproveitando o cache)
-documents = load_documents()
-db = get_vectorstore(documents)
+# Carregar o índice vetorial (aproveitando o cache)
+db = get_vectorstore()
 
 def retrieve_info(query):
     similar_response = db.similarity_search(query, k=3)
