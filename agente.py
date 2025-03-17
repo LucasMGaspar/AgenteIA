@@ -1,6 +1,7 @@
 import streamlit as st
 import os
-import base64
+import re
+import PyPDF2
 from dotenv import load_dotenv
 from googlesearch import search  # Certifique-se de instalar com "pip install googlesearch-python"
 
@@ -47,7 +48,7 @@ h1 {
     margin-bottom: 10px;
     border-radius: 8px;
     padding: 10px;
-    width: 100%; /* ocupa toda a largura do contêiner */
+    width: 100%;
     box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
@@ -95,6 +96,52 @@ def retrieve_info(query):
     similar_response = db.similarity_search(query, k=3)
     return [doc.page_content for doc in similar_response]
 
+# ------------------------ FUNÇÕES PARA PROCESSAR PDF ------------------------
+def process_pdf(file) -> list:
+    """
+    Lê um arquivo PDF, extrai o texto e procura por códigos IMPA (6 dígitos).
+    Para cada código encontrado, tenta capturar a linha onde ele aparece (como contexto).
+    Retorna uma lista de tuplas: (codigo, contexto).
+    """
+    try:
+        pdf_reader = PyPDF2.PdfReader(file)
+    except Exception as e:
+        st.error(f"Erro ao ler o PDF {file.name}: {e}")
+        return []
+    
+    full_text = ""
+    for page in pdf_reader.pages:
+        text = page.extract_text()
+        if text:
+            full_text += text + "\n"
+    
+    # Regex para encontrar sequências de 6 dígitos
+    pattern = re.compile(r'(\d{6})')
+    matches = pattern.findall(full_text)
+    unique_codes = list(set(matches))
+    
+    results = []
+    # Divide o texto em linhas para capturar o contexto
+    lines = full_text.splitlines()
+    for code in unique_codes:
+        for line in lines:
+            if code in line:
+                results.append((code, line.strip()))
+                break
+    return results
+
+def lookup_product(code: str, context: str) -> str:
+    """
+    Consulta o índice vetorial utilizando o código e o contexto extraído para tentar identificar o item.
+    Retorna as informações do produto (IMPA code, nome e descrição) se encontrado; caso contrário, informa que não foi encontrado.
+    """
+    query = f"IMPA {code} {context}"
+    info = retrieve_info(query)
+    if info:
+        return info[0]  # Considera o primeiro resultado como o mais relevante.
+    else:
+        return "Produto não encontrado no banco."
+
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
 lm = ChatOpenAI(temperature=0, model="gpt-4o")
 
@@ -116,24 +163,26 @@ st.title("Assistente Virtual NavSupply")
 
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
+# Histórico de conversa (armazenado na sessão)
 if "conversation" not in st.session_state:
     st.session_state.conversation = []
 
+# Exibe mensagens anteriores
 for message in st.session_state.conversation:
     if message["role"] == "user":
         st.chat_message("user").write(message["content"])
     else:
         st.chat_message("assistant").write(message["content"])
 
+# Área para perguntas via chat (texto)
 user_input = st.chat_input("Digite sua pergunta:")
 
 if user_input:
     st.session_state.conversation.append({"role": "user", "content": user_input})
     st.chat_message("user").write(user_input)
     
-    # Recupera informações relevantes do CSV com cache
+    # Recupera informações do CSV; se não houver dados, aciona a busca na web
     context_info = retrieve_info(user_input)
-    # Se não encontrar informações concretas no CSV, aciona a busca no Google
     if not context_info or all(not item.strip() for item in context_info):
         web_results = google_search(user_input)
         web_context = "\n".join(web_results)
@@ -141,9 +190,7 @@ if user_input:
     else:
         final_context = "Contexto do CSV:\n" + "\n".join(context_info)
     
-    # Monta o prompt final incorporando o contexto relevante
     full_prompt = f"{template}\n\n{final_context}\n\nPergunta: {user_input}"
-    
     messages = [HumanMessage(content=full_prompt)]
     response = lm(messages)
     answer = response.content
@@ -152,3 +199,22 @@ if user_input:
     st.chat_message("assistant").write(answer)
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# ------------------------ UPLOAD E PROCESSAMENTO DE PDF ------------------------
+st.header("Anexar PDFs para identificar itens")
+uploaded_files = st.file_uploader("Selecione um ou mais arquivos PDF", type=["pdf"], accept_multiple_files=True)
+
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        st.subheader(f"Processando arquivo: {uploaded_file.name}")
+        pdf_results = process_pdf(uploaded_file)
+        if pdf_results:
+            for code, context in pdf_results:
+                st.write(f"**Código IMPA encontrado:** {code}")
+                st.write(f"**Contexto extraído:** {context}")
+                product_info = lookup_product(code, context)
+                st.write("**Produto Identificado:**")
+                st.write(product_info)
+                st.markdown("---")
+        else:
+            st.write("Nenhum código IMPA encontrado neste arquivo.")
