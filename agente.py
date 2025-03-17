@@ -19,9 +19,6 @@ st.set_page_config(
 )
 
 # ------------------------ CSS PERSONALIZADO ------------------------
-# Cores aproximadas do logo:
-#   Navy: #1F3C73
-#   Gold: #C9A15D
 css = """
 <style>
 /* Fundo geral (Navy) e texto em branco */
@@ -75,19 +72,30 @@ def google_search(query):
         st.error(f"Erro ao buscar na web: {e}")
     return results
 
-# ------------------------ CARREGAR CSV E CONFIGURAR EMBEDDINGS ------------------------
-loader = CSVLoader(file_path="dadosDeTreinamento.csv", encoding="utf-8")
-documents = list(loader.lazy_load())
+# ------------------------ FUNÇÕES COM CACHE ------------------------
+@st.cache_data
+def load_documents():
+    """Carrega os documentos do CSV uma única vez."""
+    loader = CSVLoader(file_path="teste.csv", encoding="utf-8")
+    documents = list(loader.lazy_load())
+    return documents
 
-embeddings = OpenAIEmbeddings()
-db = FAISS.from_documents(documents, embeddings)
+@st.cache_resource
+def get_vectorstore(documents):
+    """Cria e retorna o índice vetorial utilizando embeddings."""
+    embeddings = OpenAIEmbeddings()
+    vectorstore = FAISS.from_documents(documents, embeddings)
+    return vectorstore
+
+# Carregar documentos e construir o índice vetorial (aproveitando o cache)
+documents = load_documents()
+db = get_vectorstore(documents)
 
 def retrieve_info(query):
     similar_response = db.similarity_search(query, k=3)
     return [doc.page_content for doc in similar_response]
 
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
-# Verifique se o modelo está correto; se você tiver acesso ao GPT-4, por exemplo, use "gpt-4", senão utilize um modelo disponível
 lm = ChatOpenAI(temperature=0, model="gpt-4o")
 
 # ------------------------ TEMPLATE DA ASSISTENTE ------------------------
@@ -106,29 +114,24 @@ Além disso, se a consulta estiver relacionada a algum material específico, for
 # ------------------------ INTERFACE DE CHAT ------------------------
 st.title("Assistente Virtual NavSupply")
 
-# Inicia um contêiner centralizado para o chat
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
-# Histórico de conversa (armazenado na sessão)
 if "conversation" not in st.session_state:
     st.session_state.conversation = []
 
-# Exibe mensagens anteriores
 for message in st.session_state.conversation:
     if message["role"] == "user":
         st.chat_message("user").write(message["content"])
     else:
         st.chat_message("assistant").write(message["content"])
 
-# Campo de input estilo chat
 user_input = st.chat_input("Digite sua pergunta:")
 
 if user_input:
-    # Adiciona a mensagem do usuário ao histórico e exibe
     st.session_state.conversation.append({"role": "user", "content": user_input})
     st.chat_message("user").write(user_input)
     
-    # Recupera informações relevantes do CSV
+    # Recupera informações relevantes do CSV com cache
     context_info = retrieve_info(user_input)
     # Se não encontrar informações concretas no CSV, aciona a busca no Google
     if not context_info or all(not item.strip() for item in context_info):
@@ -143,11 +146,9 @@ if user_input:
     
     messages = [HumanMessage(content=full_prompt)]
     response = lm(messages)
-    answer = response.content  # Obtém o texto da resposta
+    answer = response.content
     
-    # Adiciona e exibe a resposta da assistente
     st.session_state.conversation.append({"role": "assistant", "content": answer})
     st.chat_message("assistant").write(answer)
 
-# Fecha o contêiner
 st.markdown('</div>', unsafe_allow_html=True)
