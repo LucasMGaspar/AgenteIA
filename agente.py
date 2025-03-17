@@ -76,7 +76,7 @@ def google_search(query):
 @st.cache_data
 def load_documents():
     """Carrega os documentos do CSV uma única vez."""
-    loader = CSVLoader(file_path="teste.csv", encoding="utf-8")
+    loader = CSVLoader(file_path="merged_data.csv", encoding="utf-8")
     documents = list(loader.lazy_load())
     return documents
 
