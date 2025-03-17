@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import re
-import PyPDF2
+from pypdf import PdfReader  # use pypdf, que substitui o PyPDF2
 from dotenv import load_dotenv
 from googlesearch import search  # Certifique-se de instalar com "pip install googlesearch-python"
 
@@ -44,7 +44,7 @@ h1 {
 [data-testid="stChatMessage-user"],
 [data-testid="stChatMessage-assistant"] {
     background-color: #C9A15D !important;
-    color: #000000 !important; /* texto em preto para contraste */
+    color: #000000 !important;
     margin-bottom: 10px;
     border-radius: 8px;
     padding: 10px;
@@ -104,7 +104,7 @@ def process_pdf(file) -> list:
     Retorna uma lista de tuplas: (codigo, contexto).
     """
     try:
-        pdf_reader = PyPDF2.PdfReader(file)
+        pdf_reader = PdfReader(file)  # usando PdfReader do pypdf
     except Exception as e:
         st.error(f"Erro ao ler o PDF {file.name}: {e}")
         return []
@@ -138,12 +138,12 @@ def lookup_product(code: str, context: str) -> str:
     query = f"IMPA {code} {context}"
     info = retrieve_info(query)
     if info:
-        return info[0]  # Considera o primeiro resultado como o mais relevante.
+        return info[0]
     else:
         return "Produto não encontrado no banco."
 
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
-lm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
+lm = ChatOpenAI(temperature=0, model="gpt-4o")
 
 # ------------------------ TEMPLATE DA ASSISTENTE ------------------------
 template = """Você é uma assistente virtual altamente especializada que trabalha para a NavSupply, uma empresa de vendas marítimas. Seu papel é apoiar os compradores de materiais da empresa, respondendo a dúvidas e fornecendo informações precisas sobre temas relacionados ao setor marítimo. Para desempenhar essa função, você deve possuir amplo conhecimento em diversas áreas, incluindo:
