@@ -236,7 +236,7 @@ def lookup_product(code: str, context: str) -> str:
             return ""
 
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
-lm = ChatOpenAI(temperature=0, model="gpt-4o")
+lm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo")
 
 # ------------------------ TEMPLATE DA ASSISTENTE ------------------------
 template = """Você é uma assistente virtual altamente especializada que trabalha para a NavSupply, uma empresa de vendas marítimas. Seu papel é apoiar os compradores de materiais da empresa, respondendo a dúvidas e fornecendo informações precisas sobre temas relacionados ao setor marítimo. Para desempenhar essa função, você deve possuir amplo conhecimento em diversas áreas, incluindo:
