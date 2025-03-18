@@ -4,6 +4,7 @@ import email
 from email.mime.text import MIMEText
 import openai
 import smtplib
+import time
 from dotenv import load_dotenv
 
 # Carregar as variáveis do .env
@@ -48,24 +49,13 @@ def enviar_email(destinatario, assunto, corpo):
         server.login(remetente, EMAIL_PASSWORD)
         server.send_message(msg)
 
-def buscar_ultimo_email():
+def buscar_emails_novos(mail):
     """
-    Conecta à conta via IMAP e retorna o último e-mail recebido da caixa de entrada.
+    Retorna os IDs de todos os e-mails não lidos (UNSEEN) na caixa de entrada.
     """
-    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-    mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
-    mail.select("inbox")
-    # Usa o critério "ALL" para buscar todos os e-mails
-    status, messages = mail.search(None, 'ALL')
+    status, messages = mail.search(None, 'UNSEEN')
     email_ids = messages[0].split()
-    if email_ids:
-        ultimo_email_id = email_ids[-1]  # Último e-mail recebido
-        status, msg_data = mail.fetch(ultimo_email_id, "(RFC822)")
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
-                return msg, ultimo_email_id, mail
-    return None, None, mail
+    return email_ids
 
 def extrair_conteudo_email(msg):
     """
@@ -97,27 +87,65 @@ def marcar_email_como_lido(mail, email_id):
     """
     mail.store(email_id, '+FLAGS', '\\Seen')
 
-def main():
-    # Buscar o último e-mail recebido
-    msg, email_id, mail = buscar_ultimo_email()
-    if msg:
-        remetente, subject, body = extrair_conteudo_email(msg)
-        print("Email recebido de:", remetente)
-        print("Assunto:", subject)
-        print("Corpo:", body)
-
-        # Gerar resposta via ChatGPT com base no conteúdo do e-mail
-        resposta = gerar_resposta(body)
-        print("Resposta gerada:", resposta)
-
-        # Enviar a resposta para o remetente
-        enviar_email(remetente, "Re: " + subject, resposta)
-        print("Resposta enviada com sucesso!")
-
-        # Marcar o e-mail como lido
+def marcar_todos_como_lidos(mail):
+    """
+    Marca todos os e-mails não lidos atuais como lidos.
+    Essa função é chamada na inicialização para que apenas e-mails
+    novos (recebidos após esse momento) sejam processados.
+    """
+    email_ids = buscar_emails_novos(mail)
+    for email_id in email_ids:
         marcar_email_como_lido(mail, email_id)
-    else:
-        print("Nenhum e-mail encontrado.")
+    print(f"{len(email_ids)} e-mails antigos marcados como lidos.")
+
+def main():
+    # Conectar via IMAP e selecionar a caixa de entrada
+    mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+    mail.login(EMAIL_ACCOUNT, EMAIL_PASSWORD)
+    mail.select("inbox")
+    
+    # Marcar todos os e-mails não lidos atuais como lidos
+    marcar_todos_como_lidos(mail)
+    
+    print("Aguardando novos e-mails...")
+
+    try:
+        while True:
+            # Verifica novos e-mails (não lidos) a cada 30 segundos
+            email_ids = buscar_emails_novos(mail)
+            if email_ids:
+                for email_id in email_ids:
+                    status, msg_data = mail.fetch(email_id, "(RFC822)")
+                    if status != "OK":
+                        print(f"Erro ao buscar o e-mail com ID {email_id.decode()}")
+                        continue
+                    for response_part in msg_data:
+                        if isinstance(response_part, tuple):
+                            msg = email.message_from_bytes(response_part[1])
+                            remetente, subject, body = extrair_conteudo_email(msg)
+                            
+                            print("Email recebido de:", remetente)
+                            print("Assunto:", subject)
+                            print("Corpo:", body)
+                            
+                            # Gerar resposta via ChatGPT com base no conteúdo do e-mail
+                            resposta = gerar_resposta(body)
+                            print("Resposta gerada:", resposta)
+                            
+                            # Enviar a resposta para o remetente
+                            enviar_email(remetente, "Re: " + subject, resposta)
+                            print("Resposta enviada com sucesso!")
+                            
+                            # Marcar o e-mail como lido após o processamento
+                            marcar_email_como_lido(mail, email_id)
+            # Aguarda 30 segundos antes de verificar novamente
+            time.sleep(30)
+            # Re-seleciona a caixa de entrada para manter a conexão atualizada
+            mail.select("inbox")
+    except KeyboardInterrupt:
+        print("Encerrando o monitoramento de e-mails.")
+    finally:
+        mail.logout()
 
 if __name__ == "__main__":
     main()
