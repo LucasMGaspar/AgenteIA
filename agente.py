@@ -6,6 +6,10 @@ import PyPDF2  # Usando PyPDF2 conforme solicitado
 import requests  # Necessário para requisições (se houver necessidade em outras partes)
 from dotenv import load_dotenv
 from googlesearch import search  # Certifique-se de instalar com "pip install googlesearch-python"
+import logging
+
+# Configuração do logging (pode ser configurado para salvar em arquivo se necessário)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # LangChain/IA
 from langchain_community.document_loaders import CSVLoader
@@ -69,17 +73,17 @@ def download_faiss_index(url, local_path):
     a partir da URL pública fornecida.
     """
     if not os.path.exists(local_path):
-        st.info("Arquivo faiss_index.pkl não encontrado localmente. Fazendo download...")
+        logging.info("Arquivo faiss_index.pkl não encontrado localmente. Fazendo download...")
         response = requests.get(url, stream=True)
         if response.status_code == 200:
             with open(local_path, "wb") as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            st.info("Download concluído com sucesso!")
+            logging.info("Download concluído com sucesso!")
         else:
             st.error("Erro ao fazer o download do arquivo.")
     else:
-        st.info("Arquivo faiss_index.pkl já existe localmente.")
+        logging.info("Arquivo faiss_index.pkl já existe localmente.")
 
 # URL pública do seu arquivo no GCS
 FAISS_FILE_URL = "https://storage.googleapis.com/navsupply-faiss/faiss_index.pkl"
@@ -122,7 +126,7 @@ def get_vectorstore():
         try:
             with open(index_file, "rb") as f:
                 vectorstore = pickle.load(f)
-            st.info("Índice vetorial carregado a partir do arquivo pré-computado.")
+            logging.info("Índice vetorial carregado a partir do arquivo pré-computado.")
             return vectorstore
         except Exception as e:
             st.error(f"Erro ao carregar o índice salvo: {e}")
@@ -135,7 +139,7 @@ def get_vectorstore():
     try:
         with open(index_file, "wb") as f:
             pickle.dump(vectorstore, f)
-        st.info("Índice vetorial criado e salvo com sucesso.")
+        logging.info("Índice vetorial criado e salvo com sucesso.")
     except Exception as e:
         st.error(f"Erro ao salvar o índice: {e}")
     return vectorstore
