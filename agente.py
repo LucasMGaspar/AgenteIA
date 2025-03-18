@@ -1,7 +1,9 @@
 import streamlit as st
 import os
 import re
-from pypdf import PdfReader  # use pypdf, que substitui o PyPDF2
+import pickle
+import PyPDF2  # Usando PyPDF2 conforme solicitado
+import requests  # Necessário para requisições (se houver necessidade em outras partes)
 from dotenv import load_dotenv
 from googlesearch import search  # Certifique-se de instalar com "pip install googlesearch-python"
 
@@ -13,7 +15,7 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage
 
 # ------------------------ CONFIGURAÇÕES INICIAIS ------------------------
-load_dotenv()
+load_dotenv()  # Carrega as variáveis definidas no .env
 st.set_page_config(
     page_title="Assistente Virtual NavSupply",
     layout="wide"
@@ -83,10 +85,33 @@ def load_documents():
 
 @st.cache_resource
 def get_vectorstore():
-    """Cria e retorna o índice vetorial utilizando embeddings."""
+    """
+    Cria e retorna o índice vetorial utilizando embeddings.
+    Se já existir um índice pré-computado em 'faiss_index.pkl', ele é carregado.
+    Caso contrário, é gerado e salvo para futuras execuções.
+    """
+    index_file = "faiss_index.pkl"
+    # Verifica se o índice já foi salvo localmente
+    if os.path.exists(index_file):
+        try:
+            with open(index_file, "rb") as f:
+                vectorstore = pickle.load(f)
+            st.info("Índice vetorial carregado a partir do arquivo pré-computado.")
+            return vectorstore
+        except Exception as e:
+            st.error(f"Erro ao carregar o índice salvo: {e}")
+    
+    # Se não existir, cria o índice e o salva
     documents = load_documents()  # Obtém os documentos internamente
     embeddings = OpenAIEmbeddings()
     vectorstore = FAISS.from_documents(documents, embeddings)
+    
+    try:
+        with open(index_file, "wb") as f:
+            pickle.dump(vectorstore, f)
+        st.info("Índice vetorial criado e salvo com sucesso.")
+    except Exception as e:
+        st.error(f"Erro ao salvar o índice: {e}")
     return vectorstore
 
 # Carregar o índice vetorial (aproveitando o cache)
@@ -104,7 +129,7 @@ def process_pdf(file) -> list:
     Retorna uma lista de tuplas: (codigo, contexto).
     """
     try:
-        pdf_reader = PdfReader(file)  # usando PdfReader do pypdf
+        pdf_reader = PyPDF2.PdfReader(file)
     except Exception as e:
         st.error(f"Erro ao ler o PDF {file.name}: {e}")
         return []
@@ -115,13 +140,11 @@ def process_pdf(file) -> list:
         if text:
             full_text += text + "\n"
     
-    # Regex para encontrar sequências de 6 dígitos
-    pattern = re.compile(r'(\d{6})')
+    pattern = re.compile(r'(\d{6})')  # Busca sequências de 6 dígitos
     matches = pattern.findall(full_text)
     unique_codes = list(set(matches))
     
     results = []
-    # Divide o texto em linhas para capturar o contexto
     lines = full_text.splitlines()
     for code in unique_codes:
         for line in lines:
@@ -130,17 +153,57 @@ def process_pdf(file) -> list:
                 break
     return results
 
+def is_valid_product_context(context: str) -> bool:
+    """
+    Utiliza o modelo para verificar se o trecho extraído descreve um produto real.
+    Responde 'sim' ou 'não'. Se a resposta for 'sim', consideramos o contexto válido.
+    """
+    prompt = (
+        f"Você é um especialista em análise de textos de produtos marítimos. Dado o seguinte trecho:\n\n"
+        f"\"{context}\"\n\n"
+        f"Esse trecho descreve um produto real (com informações sobre características, aplicações ou especificações) e não apenas dados irrelevantes? Responda apenas 'sim' ou 'não'."
+    )
+    message = HumanMessage(content=prompt)
+    response = lm([message])
+    answer = response.content.strip().lower()
+    return answer.startswith("sim")
+
 def lookup_product(code: str, context: str) -> str:
     """
-    Consulta o índice vetorial utilizando o código e o contexto extraído para tentar identificar o item.
-    Retorna as informações do produto (IMPA code, nome e descrição) se encontrado; caso contrário, informa que não foi encontrado.
+    Tenta identificar o produto usando o código IMPA e o contexto extraído.
+    Se a consulta com o código retornar uma descrição válida (mínimo 20 caracteres),
+    gera uma breve explicação que inclui o código. Caso contrário, tenta com o contexto
+    sozinho e informa que o código não foi localizado.
+    Se não houver informação válida, retorna string vazia.
     """
-    query = f"IMPA {code} {context}"
-    info = retrieve_info(query)
-    if info:
-        return info[0]
+    if not is_valid_product_context(context):
+        return ""
+    
+    query_with_code = f"IMPA {code} {context}"
+    info_with_code = retrieve_info(query_with_code)
+    if info_with_code and len(info_with_code[0].strip()) >= 20:
+        prompt = (
+            f"Você é uma vendedora de materiais marítimos. Com base na seguinte descrição de um produto:\n\n"
+            f"{info_with_code[0]}\n\n"
+            f"Forneça uma explicação breve e clara sobre esse produto, destacando suas principais características e aplicações."
+        )
+        sales_message = HumanMessage(content=prompt)
+        sales_response = lm([sales_message])
+        return sales_response.content.strip() + f"\n(Código IMPA: {code})"
     else:
-        return "Produto não encontrado no banco."
+        info_without_code = retrieve_info(context)
+        if info_without_code and len(info_without_code[0].strip()) >= 20:
+            prompt = (
+                f"Você é uma vendedora de materiais marítimos. Com base na seguinte descrição de um produto:\n\n"
+                f"{info_without_code[0]}\n\n"
+                f"Forneça uma explicação breve e clara sobre esse produto, destacando suas principais características e aplicações.\n"
+                f"(Observação: o código IMPA não foi localizado no arquivo.)"
+            )
+            sales_message = HumanMessage(content=prompt)
+            sales_response = lm([sales_message])
+            return sales_response.content.strip()
+        else:
+            return ""
 
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
 lm = ChatOpenAI(temperature=0, model="gpt-4o")
@@ -157,31 +220,27 @@ Materiais de Salvamento: Conhecimento dos dispositivos e materiais essenciais pa
 Códigos e Normas IMPA: Entendimento das diretrizes e códigos IMPA (International Marine Purchasing Association) que regulam processos e práticas de compras e manutenção no setor marítimo.
 Sua comunicação deve ser clara, objetiva e precisa, de modo a fornecer respostas que auxiliem os compradores na tomada de decisões informadas sobre a aquisição de materiais e na resolução de dúvidas técnicas e operacionais.
 Além disso, se a consulta estiver relacionada a algum material específico, forneça uma descrição detalhada sobre sua aplicação e para que ele é utilizado, de modo a ajudar o comprador que não conhece o material."""
-
+ 
 # ------------------------ INTERFACE DE CHAT ------------------------
 st.title("Assistente Virtual NavSupply")
-
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
 # Histórico de conversa (armazenado na sessão)
 if "conversation" not in st.session_state:
     st.session_state.conversation = []
 
-# Exibe mensagens anteriores
 for message in st.session_state.conversation:
     if message["role"] == "user":
         st.chat_message("user").write(message["content"])
     else:
         st.chat_message("assistant").write(message["content"])
 
-# Área para perguntas via chat (texto)
 user_input = st.chat_input("Digite sua pergunta:")
 
 if user_input:
     st.session_state.conversation.append({"role": "user", "content": user_input})
     st.chat_message("user").write(user_input)
     
-    # Recupera informações do CSV; se não houver dados, aciona a busca na web
     context_info = retrieve_info(user_input)
     if not context_info or all(not item.strip() for item in context_info):
         web_results = google_search(user_input)
@@ -210,11 +269,13 @@ if uploaded_files:
         pdf_results = process_pdf(uploaded_file)
         if pdf_results:
             for code, context in pdf_results:
-                st.write(f"**Código IMPA encontrado:** {code}")
-                st.write(f"**Contexto extraído:** {context}")
-                product_info = lookup_product(code, context)
-                st.write("**Produto Identificado:**")
-                st.write(product_info)
-                st.markdown("---")
+                if is_valid_product_context(context):
+                    st.write(f"**Código IMPA encontrado:** {code}")
+                    st.write(f"**Contexto extraído:** {context}")
+                    product_info = lookup_product(code, context)
+                    if product_info:
+                        st.write("**Produto Identificado:**")
+                        st.write(product_info)
+                        st.markdown("---")
         else:
             st.write("Nenhum código IMPA encontrado neste arquivo.")
