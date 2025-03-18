@@ -62,6 +62,32 @@ html, body, [class*="css"] {
 """
 st.markdown(css, unsafe_allow_html=True)
 
+# ------------------------ FUNÇÃO DE DOWNLOAD DO ARQUIVO FAISS ------------------------
+def download_faiss_index(url, local_path):
+    """
+    Verifica se o arquivo local existe. Se não existir, faz o download do arquivo
+    a partir da URL pública fornecida.
+    """
+    if not os.path.exists(local_path):
+        st.info("Arquivo faiss_index.pkl não encontrado localmente. Fazendo download...")
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with open(local_path, "wb") as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            st.info("Download concluído com sucesso!")
+        else:
+            st.error("Erro ao fazer o download do arquivo.")
+    else:
+        st.info("Arquivo faiss_index.pkl já existe localmente.")
+
+# URL pública do seu arquivo no GCS
+FAISS_FILE_URL = "https://storage.googleapis.com/navsupply-faiss/faiss_index.pkl"
+LOCAL_FAISS_PATH = "faiss_index.pkl"
+
+# Verifica e baixa o arquivo se necessário
+download_faiss_index(FAISS_FILE_URL, LOCAL_FAISS_PATH)
+
 # ------------------------ FUNÇÃO DE BUSCA NO GOOGLE ------------------------
 def google_search(query):
     """
@@ -90,7 +116,7 @@ def get_vectorstore():
     Se já existir um índice pré-computado em 'faiss_index.pkl', ele é carregado.
     Caso contrário, é gerado e salvo para futuras execuções.
     """
-    index_file = "faiss_index.pkl"
+    index_file = LOCAL_FAISS_PATH  # Utiliza o mesmo arquivo baixado anteriormente
     # Verifica se o índice já foi salvo localmente
     if os.path.exists(index_file):
         try:
@@ -206,7 +232,7 @@ def lookup_product(code: str, context: str) -> str:
             return ""
 
 # ------------------------ INICIALIZA O MODELO DE CHAT ------------------------
-lm = ChatOpenAI(temperature=0, model="gpt-4o-mini")
+lm = ChatOpenAI(temperature=0, model="gpt-4o")
 
 # ------------------------ TEMPLATE DA ASSISTENTE ------------------------
 template = """Você é uma assistente virtual altamente especializada que trabalha para a NavSupply, uma empresa de vendas marítimas. Seu papel é apoiar os compradores de materiais da empresa, respondendo a dúvidas e fornecendo informações precisas sobre temas relacionados ao setor marítimo. Para desempenhar essa função, você deve possuir amplo conhecimento em diversas áreas, incluindo:
