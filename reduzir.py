@@ -54,8 +54,9 @@ def buscar_emails_novos(mail):
     Retorna os IDs de todos os e-mails não lidos (UNSEEN) na caixa de entrada.
     """
     status, messages = mail.search(None, 'UNSEEN')
-    email_ids = messages[0].split()
-    return email_ids
+    if status == "OK":
+        return messages[0].split()
+    return []
 
 def extrair_conteudo_email(msg):
     """
@@ -71,13 +72,13 @@ def extrair_conteudo_email(msg):
             if content_type == "text/plain" and "attachment" not in content_disposition:
                 try:
                     body = part.get_payload(decode=True).decode()
-                except Exception as e:
+                except Exception:
                     body = ""
                 break
     else:
         try:
             body = msg.get_payload(decode=True).decode()
-        except Exception as e:
+        except Exception:
             body = ""
     return remetente, subject, body
 
@@ -108,13 +109,18 @@ def main():
     marcar_todos_como_lidos(mail)
     
     print("Aguardando novos e-mails...")
+    # Conjunto para armazenar IDs já processados
+    processados = set()
 
     try:
         while True:
-            # Verifica novos e-mails (não lidos) a cada 30 segundos
+            # Busca e-mails não lidos
             email_ids = buscar_emails_novos(mail)
             if email_ids:
                 for email_id in email_ids:
+                    # Se já foi processado, pula
+                    if email_id in processados:
+                        continue
                     status, msg_data = mail.fetch(email_id, "(RFC822)")
                     if status != "OK":
                         print(f"Erro ao buscar o e-mail com ID {email_id.decode()}")
@@ -136,7 +142,8 @@ def main():
                             enviar_email(remetente, "Re: " + subject, resposta)
                             print("Resposta enviada com sucesso!")
                             
-                            # Marcar o e-mail como lido após o processamento
+                            # Marca como processado e como lido
+                            processados.add(email_id)
                             marcar_email_como_lido(mail, email_id)
             # Aguarda 30 segundos antes de verificar novamente
             time.sleep(30)
