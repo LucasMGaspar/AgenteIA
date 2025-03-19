@@ -252,7 +252,7 @@ Sua comunicação deve ser clara, objetiva e precisa, de modo a fornecer respost
 Além disso, se a consulta estiver relacionada a algum material específico, forneça uma descrição detalhada sobre sua aplicação e para que ele é utilizado, de modo a ajudar o comprador que não conhece o material."""
  
 # ------------------------ INTERFACE DE CHAT ------------------------
-st.title("Assistente Virtual NavSupply")
+st.title("Assistente Virtual")
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
 # Histórico de conversa (armazenado na sessão)
