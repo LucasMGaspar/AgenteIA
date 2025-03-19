@@ -21,7 +21,7 @@ from langchain.schema import HumanMessage
 # ------------------------ CONFIGURAÇÕES INICIAIS ------------------------
 load_dotenv()  # Carrega as variáveis definidas no .env
 st.set_page_config(
-    page_title="Assistente Virtual NavSupply",
+    page_title="Assistente Virtual",
     layout="wide"
 )
 
