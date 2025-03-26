@@ -21,7 +21,7 @@ from langchain.schema import HumanMessage
 # ------------------------ CONFIGURAÇÕES INICIAIS ------------------------
 load_dotenv()  # Carrega as variáveis definidas no .env
 st.set_page_config(
-    page_title="Assistente Virtual",
+    page_title="Assistente Virtual NavSupply",
     layout="wide"
 )
 
@@ -250,9 +250,9 @@ Materiais de Salvamento: Conhecimento dos dispositivos e materiais essenciais pa
 Códigos e Normas IMPA: Entendimento das diretrizes e códigos IMPA (International Marine Purchasing Association) que regulam processos e práticas de compras e manutenção no setor marítimo.
 Sua comunicação deve ser clara, objetiva e precisa, de modo a fornecer respostas que auxiliem os compradores na tomada de decisões informadas sobre a aquisição de materiais e na resolução de dúvidas técnicas e operacionais.
 Além disso, se a consulta estiver relacionada a algum material específico, forneça uma descrição detalhada sobre sua aplicação e para que ele é utilizado, de modo a ajudar o comprador que não conhece o material."""
- 
+
 # ------------------------ INTERFACE DE CHAT ------------------------
-st.title("Assistente Virtual")
+st.title("Assistente Virtual NavSupply")
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
 
 # Histórico de conversa (armazenado na sessão)
@@ -306,6 +306,13 @@ if uploaded_files:
                     if product_info:
                         st.write("**Produto Identificado:**")
                         st.write(product_info)
+                        
+                        # Gera o link com code=<código inteiro> e category=<primeiros 2 dígitos>
+                        category = code[:2]
+                        link = f"http://www.space-marine.com/pricelist/information.cfm?code={code}&category={category}"
+                        
+                        # Exibe o link clicável
+                        st.markdown(f"[Clique aqui para detalhes do produto]({link})")
                         st.markdown("---")
         else:
             st.write("Nenhum código IMPA encontrado neste arquivo.")
